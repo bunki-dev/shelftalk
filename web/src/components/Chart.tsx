@@ -33,10 +33,17 @@ export function Chart({
     .filter((p) => Number.isFinite(p.value));
   if (pts.length < 2) return null;
   const label = caption || y.replaceAll("_", " ");
-  return type === "bar" ? <Bars pts={pts.slice(0, 15)} y={label} /> : <Line pts={pts} y={label} />;
+  // Uplift is already in percentage points (114.8 means +114.8%).
+  const pct = /uplift|_pct\b|percent/i.test(`${label} ${y}`);
+  const fmt = (v: number) => (pct && Math.abs(v) >= 1 ? `${v.toFixed(1)}%` : short(v));
+  return type === "bar" ? (
+    <Bars pts={pts.slice(0, 15)} y={label} fmt={fmt} />
+  ) : (
+    <Line pts={pts} y={label} fmt={fmt} />
+  );
 }
 
-function Bars({ pts, y }: { pts: { label: string; value: number }[]; y: string }) {
+function Bars({ pts, y, fmt }: { pts: { label: string; value: number }[]; y: string; fmt: (v: number) => string }) {
   const max = Math.max(...pts.map((p) => Math.abs(p.value)), 1e-9);
   const rowH = 30;
   const labelW = 150;
@@ -55,7 +62,7 @@ function Bars({ pts, y }: { pts: { label: string; value: number }[]; y: string }
               </text>
               <rect x={labelW} y={top + 4} width={w} height={rowH - 10} className={i === 0 ? "bar bar-top" : "bar"} />
               <text x={labelW + w + 6} y={top + 18} className="chart-value">
-                {short(p.value)}
+                {fmt(p.value)}
               </text>
             </g>
           );
@@ -66,7 +73,7 @@ function Bars({ pts, y }: { pts: { label: string; value: number }[]; y: string }
   );
 }
 
-function Line({ pts, y }: { pts: { label: string; value: number }[]; y: string }) {
+function Line({ pts, y, fmt }: { pts: { label: string; value: number }[]; y: string; fmt: (v: number) => string }) {
   const W = 560;
   const H = 220;
   const pad = { l: 52, r: 16, t: 14, b: 34 };
@@ -89,7 +96,7 @@ function Line({ pts, y }: { pts: { label: string; value: number }[]; y: string }
           <g key={t}>
             <line x1={pad.l} x2={W - pad.r} y1={py(t)} y2={py(t)} className="grid" />
             <text x={pad.l - 8} y={py(t) + 4} textAnchor="end" className="chart-value">
-              {short(t)}
+              {fmt(t)}
             </text>
           </g>
         ))}
@@ -97,7 +104,7 @@ function Line({ pts, y }: { pts: { label: string; value: number }[]; y: string }
         {pts.map((p, i) => (
           <g key={p.label + i}>
             <circle cx={px(i)} cy={py(p.value)} r={i === pts.length - 1 ? 5 : 3} className="dot">
-              <title>{`${p.label}: ${short(p.value)}`}</title>
+              <title>{`${p.label}: ${fmt(p.value)}`}</title>
             </circle>
             {(i % every === 0 && pts.length - 1 - i > every / 2) || i === pts.length - 1 ? (
               <text

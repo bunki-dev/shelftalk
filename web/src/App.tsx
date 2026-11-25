@@ -15,6 +15,9 @@ const fmtCell = (v: string | number | null) => {
   return v;
 };
 
+// "Promo uplift (units per store-week, promo vs non-promo), by category" -> the metric part, brackets intact.
+const captionFrom = (reason: string) => reason.match(/^[^,(]*(\([^)]*\))?/)?.[0].trim() || reason;
+
 export default function App() {
   const runtime = useMemo(() => new Runtime(), []);
   const [ready, setReady] = useState<Ready | null>(null);
@@ -202,7 +205,7 @@ function AnswerTicket({ a, onSettings }: { a: Answer; onSettings: () => void }) 
           rows={r.rows}
           x={chart.x!}
           y={chart.y!}
-          caption={a.source === "planner" ? a.reason.split(",")[0] : undefined}
+          caption={a.source === "planner" ? captionFrom(a.reason) : undefined}
         />
       )}
       {a.source !== "none" && (
