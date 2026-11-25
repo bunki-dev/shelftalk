@@ -1,0 +1,142 @@
+# The semantic layer: what the data means, in business terms.
+# Both the deterministic planner and the LLM read this, so metrics are defined once.
+
+business: >
+  Bluegum Market is a fictional Australian grocery chain. Sales are weekly by store and product,
+  from 2024-11-04 to the week starting 2026-10-26. All money is AUD including GST.
+
+tables:
+  sales:
+    description: Weekly sales by store and product. One row per week_start, store_id, product_id.
+    columns:
+      week_start: Monday the week starts (ISO date). Join to weeks.
+      store_id: Join to stores.
+      product_id: Join to products.
+      units: Units sold that week.
+      revenue: Dollars taken at the till (promo price when on promotion).
+      cost: Cost of goods sold, in dollars.
+      on_promo: 1 if the product was on promotion that week, else 0.
+  stores:
+    description: One row per store.
+    columns:
+      store_id: Key.
+      store_name: e.g. "Bluegum Parramatta".
+      suburb: Suburb name.
+      state: NSW, VIC, QLD, WA, SA, TAS or ACT.
+      region: Metro or Regional.
+      format: Supermarket (large), Metro (small inner-city) or Local (small regional).
+      opened_date: Opening date. Two stores opened during the data period.
+      floor_area_sqm: Trading floor area in square metres.
+  products:
+    description: One row per product.
+    columns:
+      product_id: Key.
+      product_name: Product name including pack size.
+      brand: Brand. "Bluegum" is the chain's own brand.
+      category: Top-level category, e.g. Dairy & Eggs, Drinks, Frozen.
+      subcategory: e.g. Milk, Chips, Ice Cream.
+      is_own_brand: 1 for Bluegum own-brand products.
+      unit_cost: Cost per unit in dollars.
+      regular_price: Shelf price when not on promotion.
+  weeks:
+    description: Calendar for each sales week.
+    columns:
+      week_start: Key (Monday, ISO date).
+      week_of_year: ISO week number.
+      month: YYYY-MM of week_start.
+      quarter: e.g. 2025-Q3 (calendar quarters).
+      year: Calendar year of week_start.
+      season: Southern hemisphere season (Summer = Dec-Feb).
+  promotions:
+    description: One row per product per promoted week. Promotions are national.
+    columns:
+      promo_id: Key.
+      product_id: Join to products.
+      week_start: Promoted week.
+      promo_type: Half price, Price drop or Multi-buy.
+      promo_price: Price charged during the promotion.
+  loyalty_members:
+    description: Loyalty program members. Contains personal information.
+    columns:
+      member_id: Key.
+      first_name: PII
+      email: PII
+      phone: PII
+      home_store_id: Join to stores.
+      tier: Bronze, Silver or Gold.
+      joined_date: Date joined.
+      spend_last_12m: Dollars spent in the last 12 months.
+      visits_last_12m: Store visits in the last 12 months.
+
+# Columns no query may read, enforced by the database engine (see warehouse.py).
+pii_columns:
+  loyalty_members: [first_name, email, phone]
+
+joins:
+  - sales.store_id = stores.store_id
+  - sales.product_id = products.product_id
+  - sales.week_start = weeks.week_start
+  - promotions.product_id = products.product_id
+  - loyalty_members.home_store_id = stores.store_id
+
+metrics:
+  revenue:
+    label: Sales
+    sql: SUM(sales.revenue)
+    format: money
+    synonyms: [sales, revenue, takings, turnover, dollars]
+  units:
+    label: Units sold
+    sql: SUM(sales.units)
+    format: number
+    synonyms: [units, volume, quantity, items sold]
+  gross_margin:
+    label: Gross margin
+    sql: SUM(sales.revenue) - SUM(sales.cost)
+    format: money
+    synonyms: [gross margin, gross profit, margin dollars, profit]
+  margin_pct:
+    label: Gross margin %
+    sql: 100.0 * (SUM(sales.revenue) - SUM(sales.cost)) / NULLIF(SUM(sales.revenue), 0)
+    format: percent
+    synonyms: [margin percent, margin %, margin rate, gm%, margin, gross margin %, gross margin percent, gross margin rate]
+  avg_price:
+    label: Average selling price
+    sql: SUM(sales.revenue) / NULLIF(SUM(sales.units), 0)
+    format: money
+    synonyms: [average price, average selling price, asp]
+  promo_share:
+    label: Share of sales on promotion
+    sql: 100.0 * SUM(CASE WHEN sales.on_promo = 1 THEN sales.revenue ELSE 0 END) / NULLIF(SUM(sales.revenue), 0)
+    format: percent
+    synonyms: [promo share, promotional share, share on promotion, share on promo]
+  own_brand_share:
+    label: Own-brand share of sales
+    sql: 100.0 * SUM(CASE WHEN products.is_own_brand = 1 THEN sales.revenue ELSE 0 END) / NULLIF(SUM(sales.revenue), 0)
+    format: percent
+    needs: [products]
+    synonyms: [own brand share, own-brand share, private label share, home brand share]
+  promo_uplift:
+    label: Promo uplift (units per store-week, promo vs non-promo)
+    sql: >
+      100.0 * (AVG(CASE WHEN sales.on_promo = 1 THEN sales.units END)
+      / NULLIF(AVG(CASE WHEN sales.on_promo = 0 THEN sales.units END), 0) - 1)
+    format: percent
+    synonyms: [promo uplift, promotion uplift, uplift, promo lift, lift from promotions]
+
+dimensions:
+  state: {sql: stores.state, table: stores, synonyms: [state, states]}
+  region: {sql: stores.region, table: stores, synonyms: [region, metro vs regional]}
+  store: {sql: stores.store_name, table: stores, synonyms: [store, stores, branch, location]}
+  format: {sql: stores.format, table: stores, synonyms: [format, store format, store type]}
+  category: {sql: products.category, table: products, synonyms: [category, categories, department]}
+  subcategory: {sql: products.subcategory, table: products, synonyms: [subcategory, subcategories]}
+  product: {sql: products.product_name, table: products, synonyms: [product, products, item, items, sku, skus, line]}
+  brand: {sql: products.brand, table: products, synonyms: [brand, brands, supplier]}
+  own_brand: {sql: "CASE WHEN products.is_own_brand = 1 THEN 'Own brand' ELSE 'Branded' END", table: products, synonyms: [own brand vs branded]}
+  week: {sql: sales.week_start, table: sales, synonyms: [week, weekly, each week, per week]}
+  month: {sql: weeks.month, table: weeks, synonyms: [month, monthly, each month, per month]}
+  quarter: {sql: weeks.quarter, table: weeks, synonyms: [quarter, quarterly]}
+  year: {sql: weeks.year, table: weeks, synonyms: [year, yearly, annual, each year]}
+  season: {sql: weeks.season, table: weeks, synonyms: [season, seasons, seasonal]}
+  promo_type: {sql: "COALESCE(promotions.promo_type, 'No promotion')", table: promotions, synonyms: [promo type, promotion type, mechanic]}

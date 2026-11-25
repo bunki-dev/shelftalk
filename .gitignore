@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.db
+evals/reports/*.json
+web/node_modules/
+web/dist/
+web/public/data/

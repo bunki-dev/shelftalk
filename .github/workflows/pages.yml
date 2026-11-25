@@ -1,0 +1,57 @@
+name: Deploy to GitHub Pages
+
+# Generates the demo warehouse, bundles it with the Python package for in-browser
+# (Pyodide) execution, and publishes the app to https://<owner>.github.io/<repo>/.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Bundle the package and warehouse
+        run: |
+          python scripts/build_py_bundle.py
+          echo "BUNDLE_VERSION=$(sha256sum web/public/data/shelftalk.zip | cut -c1-12)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the web app
+        working-directory: web
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_BUNDLE_VERSION: ${{ env.BUNDLE_VERSION }}
+        run: |
+          npm install
+          npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
