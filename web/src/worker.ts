@@ -25,7 +25,13 @@ async function boot(): Promise<{ py: Pyodide; info: unknown }> {
   const { loadPyodide } = await import(/* @vite-ignore */ `${PYODIDE_URL}pyodide.mjs`);
   const py: Pyodide = await loadPyodide({ indexURL: PYODIDE_URL });
   progress("Loading SQLite and YAML…");
-  await py.loadPackage(["sqlite3", "pyyaml"]);
+  await py.loadPackage(["pyyaml"]);
+  // SQLite is part of the standard library in current Pyodide; older releases ship it separately.
+  try {
+    py.runPython("import sqlite3");
+  } catch {
+    await py.loadPackage(["sqlite3"]);
+  }
   progress("Stocking the shelves: 220,000 rows of sales…");
   const res = await fetch(BUNDLE_URL);
   if (!res.ok) throw new Error(`Couldn't download the warehouse (${res.status}).`);
